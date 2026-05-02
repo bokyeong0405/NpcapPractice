@@ -7,6 +7,9 @@ notes/
 .env
 !.env.example
 
+# 외부 SDK (Npcap SDK 등은 직접 다운로드해 배치)
+capture-agent/third_party/
+
 # C/C++ 빌드 산출물
 build/
 out/

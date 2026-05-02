@@ -1,0 +1,39 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: pkt-redis
+    ports:
+      - "127.0.0.1:6379:6379"
+    command:
+      - redis-server
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  analyzer:
+    build: ./analyzer
+    container_name: pkt-analyzer
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_URL: redis://redis:6379
+      SRC_STREAM: raw_packets
+      DST_STREAM: parsed_events
+      GROUP: analyzer-cg
+      CONSUMER: analyzer-1
+      DST_MAXLEN: "100000"
+      BATCH_SIZE: "100"
+      BLOCK_MS: "5000"
+      LOG_LEVEL: INFO
+    restart: unless-stopped
