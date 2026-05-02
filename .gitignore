@@ -1,0 +1,44 @@
+# 개인 작업 노트 / 구현 메모
+구현 내용.txt
+*.local.md
+notes/
+
+# 환경 변수
+.env
+!.env.example
+
+# C/C++ 빌드 산출물
+build/
+out/
+*.obj
+*.o
+*.exe
+*.dll
+*.lib
+*.pdb
+*.ilk
+*.exp
+CMakeCache.txt
+CMakeFiles/
+CMakeUserPresets.json
+
+# Visual Studio / MSBuild
+.vs/
+*.vcxproj.user
+*.suo
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+Thumbs.db
+.DS_Store
