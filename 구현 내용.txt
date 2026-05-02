@@ -1,0 +1,36 @@
+1. 수집할 정보
+timestamp
+src_ip
+dst_ip
+src_port
+dst_port
+protocol
+packet_size
+
+2. Grafana 대시보드
+초당 패킷 수
+초당 바이트 수
+프로토콜별 비율
+Top talker
+목적지 IP Top N
+포트별 트래픽 분포
+
+3. L7일부 파싱
+DNS query domain
+HTTP Host
+HTTP method
+HTTP path
+TLS SNI
+
+
+4. 정리
+Npcap 캡처
+→ IP/TCP/UDP 파싱
+→ src/dst/port/protocol/size 추출
+→ Redis Stream push
+→ PostgreSQL/TimescaleDB 저장
+→ Grafana 시각화
++ DNS query 파싱
++ HTTP Host 파싱
++ TLS SNI 파싱
++ Top talker / Top domain / Protocol ratio 대시보드
