@@ -1,6 +1,6 @@
 # analyzer
 
-`raw_packets` 스트림에서 base64 인코딩된 프레임을 꺼내 L2~L4 파싱 후 `parsed_events` 스트림에 발행한다.
+`raw_packets` 스트림에서 base64 인코딩된 프레임을 꺼내 L2~L4 + 일부 L7 파싱 후 `parsed_events` 스트림에 발행한다.
 
 ## 동작
 
@@ -11,6 +11,10 @@
    - IPv4 / IPv6 → src/dst IP, proto
    - TCP / UDP → sport/dport (그 외엔 0)
    - 비-IP (ARP 등) 프레임은 스킵
+   - L7 파싱 (포트 기준 분기 — `l7.py`):
+     - UDP:53 query → `dns_qname`
+     - TCP:80 request → `http_host`, `http_method`, `http_path`
+     - TCP:443 ClientHello → `tls_sni`
 4. 파이프라인으로 `XADD parsed_events MAXLEN ~`
 5. 일괄 `XACK`
 
@@ -26,8 +30,18 @@ at-least-once: `XADD` 성공 후 `XACK`. 크래시 시 중복 가능, 누락 없
 | `sport` / `dport` | int | TCP/UDP 포트, 그 외 0 |
 | `proto` | str | TCP / UDP / ICMP / ICMPv6 / IP_<num> |
 | `packet_size` | int | 캡처된 바이트 수 (caplen) |
-| `l7_kind` | str | 4단계에서 채움 (DNS/HTTP/TLS) |
-| `l7_value` | str | 4단계에서 채움 |
+| `dns_qname` | str | DNS query name (UDP:53), 비DNS는 `""` |
+| `http_host` | str | HTTP `Host` 헤더, 비HTTP/응답은 `""` |
+| `http_method` | str | HTTP 메서드 (GET/POST/...), 비HTTP는 `""` |
+| `http_path` | str | HTTP request URI, 비HTTP는 `""` |
+| `tls_sni` | str | TLS ClientHello SNI, 비TLS/미스매치는 `""` |
+
+## L7 파싱의 한계
+
+- HTTP / TLS는 *첫 TCP 세그먼트*에 헤더가 모두 있어야 매칭. 분할되면 무시.
+- 비-표준 포트 매칭 안함 (8080의 HTTP 등은 미감지).
+- TCP DNS 미지원 (대부분 UDP라 영향 작음).
+- HTTP 응답은 `dpkt.http.Request` 가 거부 → 자연히 무시됨.
 
 ## 환경 변수
 

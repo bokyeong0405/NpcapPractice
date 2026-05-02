@@ -8,21 +8,25 @@
 2. PG 연결
 3. `XREADGROUP aggregator-cg aggregator-1 COUNT 500 BLOCK 1000 STREAMS parsed_events >`
 4. 각 이벤트의 `ts_ns`로 10초 윈도우 정렬
-5. 메모리에서 4종 카운터 누적:
-   - `flows` (5-tuple)
-   - `protocol_stats` (proto)
-   - `top_talkers` (ip, role)
-   - `port_traffic` (port, role, proto)
+5. 메모리에서 4종 카운터 + 3종 L7 이벤트 리스트 누적:
+   - 카운터(윈도우 정렬 시각): `flows` (5-tuple) / `protocol_stats` (proto) / `top_talkers` (ip, role) / `port_traffic` (port, role, proto)
+   - 이벤트(원본 ts_ns 보존): `dns_queries` / `http_requests` / `tls_sni`
 6. 윈도우 종료 시각이 `wall_clock - (window + grace)` 보다 오래되면:
-   - batch upsert (`INSERT ... ON CONFLICT DO UPDATE SET = EXCLUDED`)
+   - 카운터: batch upsert (`INSERT ... ON CONFLICT DO UPDATE SET = EXCLUDED`)
+   - L7 이벤트: 각 이벤트의 원본 `ts_ns` 그대로 일반 `INSERT` (UNIQUE 없음)
    - 해당 윈도우에 기여한 모든 메시지 일괄 `XACK`
 
 ## 멱등성 — 왜 동작하는가
 
+**카운터 4종**:
 - 윈도우의 합계는 메모리에서 *완전히* 누적된 뒤 한 번에 flush
 - 모든 hypertable에 `UNIQUE (time, dims...)` 가 걸려있음
 - INSERT는 `ON CONFLICT ... DO UPDATE SET = EXCLUDED` (덧셈 X, **덮어쓰기**)
 - → at-least-once 환경에서 같은 윈도우가 재처리되어도 같은 행에 같은 값이 다시 써짐 → 결과 불변
+
+**L7 이벤트 3종**:
+- UNIQUE 없이 단순 INSERT. 크래시 직후 같은 윈도우 재처리 시 드물게 중복 행 발생.
+- 대시보드는 `COUNT/GROUP BY qname` 등으로 집계하므로 작은 중복은 top-N 결과에 거의 영향 없음.
 
 ## 알려진 한계
 
@@ -87,5 +91,29 @@ FROM port_traffic
 WHERE time > now() - interval '5 minutes' AND role = 'dst'
 GROUP BY port, proto
 ORDER BY bytes DESC
+LIMIT 20;
+
+-- DNS top domains (최근 5분)
+SELECT qname, COUNT(*) AS queries
+FROM dns_queries
+WHERE time > now() - interval '5 minutes'
+GROUP BY qname
+ORDER BY queries DESC
+LIMIT 20;
+
+-- TLS SNI top (최근 5분)
+SELECT sni, COUNT(*) AS hellos
+FROM tls_sni
+WHERE time > now() - interval '5 minutes'
+GROUP BY sni
+ORDER BY hellos DESC
+LIMIT 20;
+
+-- HTTP host top (최근 5분)
+SELECT host, method, COUNT(*) AS reqs
+FROM http_requests
+WHERE time > now() - interval '5 minutes'
+GROUP BY host, method
+ORDER BY reqs DESC
 LIMIT 20;
 ```

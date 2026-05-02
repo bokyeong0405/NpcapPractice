@@ -45,6 +45,10 @@ class WindowAgg:
     proto: dict = field(default_factory=lambda: defaultdict(make_counter))
     talkers: dict = field(default_factory=lambda: defaultdict(make_counter))
     ports: dict = field(default_factory=lambda: defaultdict(make_counter))
+    # L7 events: stored per-event with their original timestamps
+    dns_events: list = field(default_factory=list)    # (ts_dt, qname, client_ip)
+    http_events: list = field(default_factory=list)   # (ts_dt, host, method, path, client_ip)
+    tls_events: list = field(default_factory=list)    # (ts_dt, sni, client_ip)
     msg_ids: list = field(default_factory=list)
 
 
@@ -61,6 +65,8 @@ def add_packet(agg: WindowAgg, fields: dict, msg_id: str):
     dport = int(fields.get("dport") or 0)
     proto = fields["proto"]
     size = int(fields.get("packet_size") or 0)
+    ts_ns = int(fields["ts_ns"])
+    ts_dt = datetime.fromtimestamp(ts_ns / 1e9, tz=timezone.utc)
 
     f = agg.flows[(src_ip, dst_ip, sport, dport, proto)]
     f[0] += 1
@@ -85,6 +91,22 @@ def add_packet(agg: WindowAgg, fields: dict, msg_id: str):
         dp = agg.ports[(dport, "dst", proto)]
         dp[0] += 1
         dp[1] += size
+
+    # L7 events: client_ip is always src_ip because the analyzer only matches
+    # client→server direction (DNS query / HTTP request / TLS ClientHello).
+    qname = fields.get("dns_qname") or ""
+    if qname:
+        agg.dns_events.append((ts_dt, qname, src_ip))
+
+    host = fields.get("http_host") or ""
+    method = fields.get("http_method") or ""
+    path = fields.get("http_path") or ""
+    if host or method or path:
+        agg.http_events.append((ts_dt, host, method, path, src_ip))
+
+    sni = fields.get("tls_sni") or ""
+    if sni:
+        agg.tls_events.append((ts_dt, sni, src_ip))
 
     agg.msg_ids.append(msg_id)
 
@@ -121,6 +143,21 @@ ON CONFLICT (time, port, role, proto) DO UPDATE
        bytes   = EXCLUDED.bytes
 """
 
+SQL_DNS = """
+INSERT INTO dns_queries (time, qname, client_ip)
+VALUES (%s, %s, %s)
+"""
+
+SQL_HTTP = """
+INSERT INTO http_requests (time, host, method, path, client_ip)
+VALUES (%s, %s, %s, %s, %s)
+"""
+
+SQL_TLS_SNI = """
+INSERT INTO tls_sni (time, sni, client_ip)
+VALUES (%s, %s, %s)
+"""
+
 
 def flush_window(conn, window_start: datetime, agg: WindowAgg) -> int:
     with conn.cursor() as cur:
@@ -144,6 +181,12 @@ def flush_window(conn, window_start: datetime, agg: WindowAgg) -> int:
                 (window_start, k[0], k[1], k[2], v[0], v[1])
                 for k, v in agg.ports.items()
             ])
+        if agg.dns_events:
+            cur.executemany(SQL_DNS, agg.dns_events)
+        if agg.http_events:
+            cur.executemany(SQL_HTTP, agg.http_events)
+        if agg.tls_events:
+            cur.executemany(SQL_TLS_SNI, agg.tls_events)
     conn.commit()
     return len(agg.msg_ids)
 
@@ -226,9 +269,11 @@ def main():
                     r.xack(SRC_STREAM, GROUP, *agg.msg_ids)
                 total_flushed_msgs += n
                 LOG.debug(
-                    "flushed window %s: %d msgs, flows=%d proto=%d talkers=%d ports=%d",
+                    "flushed window %s: %d msgs, flows=%d proto=%d talkers=%d ports=%d "
+                    "dns=%d http=%d tls=%d",
                     w.isoformat(), n,
                     len(agg.flows), len(agg.proto), len(agg.talkers), len(agg.ports),
+                    len(agg.dns_events), len(agg.http_events), len(agg.tls_events),
                 )
             except Exception as e:
                 LOG.error("flush failed for %s: %s", w.isoformat(), e)

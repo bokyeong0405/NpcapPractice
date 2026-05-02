@@ -1,11 +1,8 @@
 """analyzer: raw_packets → parsed_events.
 
 Reads base64-encoded frames from the `raw_packets` Redis stream via a consumer
-group, parses Ethernet/IP/TCP/UDP/ICMP, and republishes structured events to
-the `parsed_events` stream.
-
-L7 fields (l7_kind, l7_value) are reserved in the schema but left empty here;
-they are populated in stage 4.
+group, parses Ethernet/IP/TCP/UDP/ICMP plus selected L7 (DNS query, HTTP
+request, TLS SNI), and republishes structured events to `parsed_events`.
 """
 
 import base64
@@ -17,6 +14,8 @@ import time
 
 import dpkt
 import redis
+
+import l7
 
 LOG = logging.getLogger("analyzer")
 
@@ -38,7 +37,7 @@ def proto_name(num: int) -> str:
 
 
 def parse_frame(raw: bytes):
-    """Return parsed L3/L4 fields, or None for non-IP / unparseable frames."""
+    """Return parsed L3/L4/L7 fields, or None for non-IP / unparseable frames."""
     eth = dpkt.ethernet.Ethernet(raw)
     payload = eth.data
 
@@ -56,8 +55,22 @@ def parse_frame(raw: bytes):
         return None
 
     sport = dport = 0
-    if isinstance(l4, dpkt.tcp.TCP) or isinstance(l4, dpkt.udp.UDP):
+    l7_payload = b""
+    if isinstance(l4, (dpkt.tcp.TCP, dpkt.udp.UDP)):
         sport, dport = l4.sport, l4.dport
+        l7_payload = bytes(l4.data) if l4.data else b""
+
+    dns_qname = ""
+    http_host = http_method = http_path = ""
+    tls_sni = ""
+
+    if l7_payload:
+        if proto == "UDP" and (sport == 53 or dport == 53):
+            dns_qname = l7.parse_dns(l7_payload)
+        elif proto == "TCP" and (sport == 80 or dport == 80):
+            http_host, http_method, http_path = l7.parse_http(l7_payload)
+        elif proto == "TCP" and (sport == 443 or dport == 443):
+            tls_sni = l7.parse_tls_sni(l7_payload)
 
     return {
         "src_ip": src_ip,
@@ -65,6 +78,11 @@ def parse_frame(raw: bytes):
         "proto": proto,
         "sport": sport,
         "dport": dport,
+        "dns_qname": dns_qname,
+        "http_host": http_host,
+        "http_method": http_method,
+        "http_path": http_path,
+        "tls_sni": tls_sni,
     }
 
 
@@ -154,9 +172,11 @@ def main():
                         "dport": parsed_fields["dport"],
                         "proto": parsed_fields["proto"],
                         "packet_size": pkt_size,
-                        # Reserved for stage 4 (DNS/HTTP/TLS SNI)
-                        "l7_kind": "",
-                        "l7_value": "",
+                        "dns_qname": parsed_fields["dns_qname"],
+                        "http_host": parsed_fields["http_host"],
+                        "http_method": parsed_fields["http_method"],
+                        "http_path": parsed_fields["http_path"],
+                        "tls_sni": parsed_fields["tls_sni"],
                     },
                     maxlen=DST_MAXLEN,
                     approximate=True,

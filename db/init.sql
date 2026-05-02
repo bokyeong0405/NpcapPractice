@@ -67,3 +67,34 @@ CREATE TABLE IF NOT EXISTS port_traffic (
 );
 SELECT create_hypertable('port_traffic', 'time', if_not_exists => TRUE);
 CREATE INDEX IF NOT EXISTS port_traffic_port_idx ON port_traffic (port, time DESC);
+
+-- ===========================================================================
+-- L7 event tables (per-event timestamps; no UNIQUE — rare crash duplicates
+-- are tolerated since dashboards roll up via COUNT/GROUP BY).
+-- ===========================================================================
+
+CREATE TABLE IF NOT EXISTS dns_queries (
+    time      TIMESTAMPTZ NOT NULL,
+    qname     TEXT        NOT NULL,
+    client_ip INET        NOT NULL
+);
+SELECT create_hypertable('dns_queries', 'time', if_not_exists => TRUE);
+CREATE INDEX IF NOT EXISTS dns_queries_qname_idx ON dns_queries (qname, time DESC);
+
+CREATE TABLE IF NOT EXISTS http_requests (
+    time      TIMESTAMPTZ NOT NULL,
+    host      TEXT        NOT NULL,
+    method    TEXT        NOT NULL,
+    path      TEXT        NOT NULL,
+    client_ip INET        NOT NULL
+);
+SELECT create_hypertable('http_requests', 'time', if_not_exists => TRUE);
+CREATE INDEX IF NOT EXISTS http_requests_host_idx ON http_requests (host, time DESC);
+
+CREATE TABLE IF NOT EXISTS tls_sni (
+    time      TIMESTAMPTZ NOT NULL,
+    sni       TEXT        NOT NULL,
+    client_ip INET        NOT NULL
+);
+SELECT create_hypertable('tls_sni', 'time', if_not_exists => TRUE);
+CREATE INDEX IF NOT EXISTS tls_sni_sni_idx ON tls_sni (sni, time DESC);
