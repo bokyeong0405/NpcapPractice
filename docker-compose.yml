@@ -37,3 +37,45 @@ services:
       BLOCK_MS: "5000"
       LOG_LEVEL: INFO
     restart: unless-stopped
+
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: pkt-tsdb
+    environment:
+      POSTGRES_USER: pkt
+      POSTGRES_PASSWORD: pkt
+      POSTGRES_DB: pkt
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - tsdb-data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pkt -d pkt"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  aggregator:
+    build: ./aggregator
+    container_name: pkt-aggregator
+    depends_on:
+      redis:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+    environment:
+      REDIS_URL: redis://redis:6379
+      PG_DSN: postgresql://pkt:pkt@timescaledb:5432/pkt
+      SRC_STREAM: parsed_events
+      GROUP: aggregator-cg
+      CONSUMER: aggregator-1
+      WINDOW_SECONDS: "10"
+      GRACE_SECONDS: "5"
+      BATCH_SIZE: "500"
+      BLOCK_MS: "1000"
+      LOG_LEVEL: INFO
+    restart: unless-stopped
+
+volumes:
+  tsdb-data:
