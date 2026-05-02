@@ -1,0 +1,244 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "refresh": "10s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["npcap"],
+  "templating": { "list": [] },
+  "time": { "from": "now-15m", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "NpcapPractice Overview",
+  "uid": "npcap-overview",
+  "version": 1,
+  "weekStart": "",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Packets / sec",
+      "datasource": { "type": "postgres", "uid": "tsdb" },
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "pps",
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "drawStyle": "line" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "tsdb" },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('10 seconds', time) AS time, SUM(packets) / 10.0 AS pps FROM flows WHERE $__timeFilter(time) GROUP BY 1 ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Bytes / sec",
+      "datasource": { "type": "postgres", "uid": "tsdb" },
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "drawStyle": "line" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "tsdb" },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('10 seconds', time) AS time, SUM(bytes) / 10.0 AS bps FROM flows WHERE $__timeFilter(time) GROUP BY 1 ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "piechart",
+      "title": "Protocol ratio (bytes)",
+      "datasource": { "type": "postgres", "uid": "tsdb" },
+      "gridPos": { "x": 0, "y": 8, "w": 8, "h": 9 },
+      "fieldConfig": {
+        "defaults": { "unit": "bytes", "color": { "mode": "palette-classic" } },
+        "overrides": []
+      },
+      "options": {
+        "displayLabels": ["name", "percent"],
+        "legend": { "displayMode": "list", "placement": "right", "showLegend": true, "values": ["value"] },
+        "pieType": "donut",
+        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "tsdb" },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('10 seconds', time) AS time, proto AS metric, SUM(bytes) AS value FROM protocol_stats WHERE $__timeFilter(time) GROUP BY 1, proto ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "bargauge",
+      "title": "Top senders (bytes)",
+      "datasource": { "type": "postgres", "uid": "tsdb" },
+      "gridPos": { "x": 8, "y": 8, "w": 8, "h": 9 },
+      "fieldConfig": {
+        "defaults": { "unit": "bytes", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "reduceOptions": { "calcs": [], "fields": "/^value$/", "values": true }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "tsdb" },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT host(ip) AS metric, SUM(bytes) AS value FROM top_talkers WHERE $__timeFilter(time) AND role='src' GROUP BY ip ORDER BY value DESC LIMIT 10"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "bargauge",
+      "title": "Top destination IPs (bytes)",
+      "datasource": { "type": "postgres", "uid": "tsdb" },
+      "gridPos": { "x": 16, "y": 8, "w": 8, "h": 9 },
+      "fieldConfig": {
+        "defaults": { "unit": "bytes", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] } },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "reduceOptions": { "calcs": [], "fields": "/^value$/", "values": true }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "tsdb" },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT host(ip) AS metric, SUM(bytes) AS value FROM top_talkers WHERE $__timeFilter(time) AND role='dst' GROUP BY ip ORDER BY value DESC LIMIT 10"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Top destination ports",
+      "datasource": { "type": "postgres", "uid": "tsdb" },
+      "gridPos": { "x": 0, "y": 17, "w": 12, "h": 9 },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "left", "displayMode": "auto" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "bytes" }, "properties": [{ "id": "unit", "value": "bytes" }] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "tsdb" },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT port, proto, SUM(packets) AS packets, SUM(bytes) AS bytes FROM port_traffic WHERE $__timeFilter(time) AND role='dst' GROUP BY port, proto ORDER BY bytes DESC LIMIT 20"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "DNS top domains",
+      "datasource": { "type": "postgres", "uid": "tsdb" },
+      "gridPos": { "x": 12, "y": 17, "w": 12, "h": 9 },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "left", "displayMode": "auto" } },
+        "overrides": []
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "tsdb" },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT qname, COUNT(*) AS queries FROM dns_queries WHERE $__timeFilter(time) GROUP BY qname ORDER BY queries DESC LIMIT 20"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "TLS SNI top",
+      "datasource": { "type": "postgres", "uid": "tsdb" },
+      "gridPos": { "x": 0, "y": 26, "w": 12, "h": 9 },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "left", "displayMode": "auto" } },
+        "overrides": []
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "tsdb" },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT sni, COUNT(*) AS hellos FROM tls_sni WHERE $__timeFilter(time) GROUP BY sni ORDER BY hellos DESC LIMIT 20"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "HTTP host top",
+      "datasource": { "type": "postgres", "uid": "tsdb" },
+      "gridPos": { "x": 12, "y": 26, "w": 12, "h": 9 },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "left", "displayMode": "auto" } },
+        "overrides": []
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "tsdb" },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT host, method, COUNT(*) AS reqs FROM http_requests WHERE $__timeFilter(time) GROUP BY host, method ORDER BY reqs DESC LIMIT 20"
+        }
+      ]
+    }
+  ]
+}
